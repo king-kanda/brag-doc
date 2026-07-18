@@ -1,7 +1,8 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { Area, Project, Workstream, WorkstreamEvent } from "./types";
-import { seedAreas, seedEvents } from "./seed";
+import { seedAreas } from "./seed";
+import { formatWeekLabel, startOfWeekFor, toISODate } from "./weeks";
 
 function id() {
   return Math.random().toString(36).slice(2, 10);
@@ -16,28 +17,31 @@ interface AreaState {
   events: WorkstreamEvent[];
   activeAreaId: string | null;
   setActiveArea: (id: string) => void;
-  addArea: (input: { name: string; descriptor: string; color: string }) => void;
+  addArea: (input: { name: string; descriptor: string; color: string; weekStartsOn: number }) => void;
+  updateArea: (id: string, patch: Partial<Pick<Area, "name" | "descriptor" | "color" | "weekStartsOn">>) => void;
   archiveArea: (id: string) => void;
   restoreArea: (id: string) => void;
-  renameArea: (id: string, patch: Partial<Pick<Area, "name" | "descriptor" | "color">>) => void;
-  addProject: (areaId: string, input: Omit<Project, "id" | "createdAt" | "workstreams">) => string;
-  updateProject: (areaId: string, projectId: string, patch: Partial<Omit<Project, "id" | "workstreams">>) => void;
-  deleteProject: (areaId: string, projectId: string) => void;
+  deleteArea: (id: string) => void;
+  /** Returns the id of the current week's project for this area, creating it (with not-done workstreams carried forward) if it doesn't exist yet. */
+  ensureCurrentWeekProject: (areaId: string) => string;
+  updateProjectMeta: (
+    areaId: string,
+    projectId: string,
+    patch: Partial<Pick<Project, "descriptor" | "owner" | "nextMilestoneDate" | "nextMilestoneLabel" | "needToKnow">>
+  ) => void;
   addWorkstream: (areaId: string, projectId: string, ws: Omit<Workstream, "id" | "updatedAt">) => void;
   updateWorkstream: (areaId: string, projectId: string, wsId: string, patch: Partial<Workstream>) => void;
   deleteWorkstream: (areaId: string, projectId: string, wsId: string) => void;
 }
 
-const initialAreas = seedAreas();
-
 export const useAreaStore = create<AreaState>()(
   persist(
     (set, get) => ({
-      areas: initialAreas,
-      events: seedEvents(initialAreas),
+      areas: seedAreas(),
+      events: [],
       activeAreaId: null,
       setActiveArea: (areaId) => set({ activeAreaId: areaId }),
-      addArea: ({ name, descriptor, color }) => {
+      addArea: ({ name, descriptor, color, weekStartsOn }) => {
         const newArea: Area = {
           id: id(),
           name,
@@ -46,10 +50,15 @@ export const useAreaStore = create<AreaState>()(
           archived: false,
           createdAt: new Date().toISOString(),
           owner: "You",
+          weekStartsOn,
           projects: [],
         };
         set((s) => ({ areas: [...s.areas, newArea], activeAreaId: newArea.id }));
       },
+      updateArea: (areaId, patch) =>
+        set((s) => ({
+          areas: s.areas.map((a) => (a.id === areaId ? { ...a, ...patch } : a)),
+        })),
       archiveArea: (areaId) => {
         set((s) => ({
           areas: s.areas.map((a) => (a.id === areaId ? { ...a, archived: true } : a)),
@@ -64,27 +73,52 @@ export const useAreaStore = create<AreaState>()(
         set((s) => ({
           areas: s.areas.map((a) => (a.id === areaId ? { ...a, archived: false } : a)),
         })),
-      renameArea: (areaId, patch) =>
-        set((s) => ({
-          areas: s.areas.map((a) => (a.id === areaId ? { ...a, ...patch } : a)),
-        })),
-      addProject: (areaId, input) => {
-        const newProject: Project = { ...input, id: id(), createdAt: new Date().toISOString(), workstreams: [] };
+      deleteArea: (areaId) => {
+        set((s) => ({ areas: s.areas.filter((a) => a.id !== areaId) }));
+        const { activeAreaId, areas } = get();
+        if (activeAreaId === areaId) {
+          const nextActive = areas.find((a) => !a.archived);
+          set({ activeAreaId: nextActive ? nextActive.id : null });
+        }
+      },
+      ensureCurrentWeekProject: (areaId) => {
+        const area = get().areas.find((a) => a.id === areaId);
+        if (!area) return "";
+
+        const weekStart = toISODate(startOfWeekFor(new Date(), area.weekStartsOn));
+        const existing = area.projects.find((p) => p.weekStart === weekStart);
+        if (existing) return existing.id;
+
+        const priorProject = [...area.projects].sort((a, b) => b.weekStart.localeCompare(a.weekStart))[0];
+        const timestamp = new Date().toISOString();
+        const carried: Workstream[] = priorProject
+          ? priorProject.workstreams
+              .filter((w) => w.status !== "done")
+              .map((w) => ({ ...w, id: id(), updatedAt: timestamp }))
+          : [];
+
+        const newProject: Project = {
+          id: id(),
+          weekStart,
+          descriptor: "",
+          owner: priorProject?.owner ?? "You",
+          nextMilestoneDate: "",
+          nextMilestoneLabel: "",
+          needToKnow: "",
+          createdAt: timestamp,
+          workstreams: carried,
+        };
+
         set((s) => ({
           areas: s.areas.map((a) => (a.id === areaId ? { ...a, projects: [...a.projects, newProject] } : a)),
         }));
+
         return newProject.id;
       },
-      updateProject: (areaId, projectId, patch) =>
+      updateProjectMeta: (areaId, projectId, patch) =>
         set((s) => ({
           areas: s.areas.map((a) =>
             a.id === areaId ? mapProject(a, projectId, (p) => ({ ...p, ...patch })) : a
-          ),
-        })),
-      deleteProject: (areaId, projectId) =>
-        set((s) => ({
-          areas: s.areas.map((a) =>
-            a.id === areaId ? { ...a, projects: a.projects.filter((p) => p.id !== projectId) } : a
           ),
         })),
       addWorkstream: (areaId, projectId, ws) => {
@@ -97,7 +131,7 @@ export const useAreaStore = create<AreaState>()(
           areaId,
           areaName: area?.name ?? "",
           projectId,
-          projectName: project?.name ?? "",
+          projectName: project ? formatWeekLabel(project.weekStart) : "",
           workstreamId: newWorkstream.id,
           workstreamName: newWorkstream.name,
           workstreamDescriptor: newWorkstream.descriptor,
@@ -128,7 +162,7 @@ export const useAreaStore = create<AreaState>()(
                 areaId,
                 areaName: area?.name ?? "",
                 projectId,
-                projectName: project?.name ?? "",
+                projectName: project ? formatWeekLabel(project.weekStart) : "",
                 workstreamId: wsId,
                 workstreamName: patch.name ?? existing.name,
                 workstreamDescriptor: patch.descriptor ?? existing.descriptor,
@@ -163,21 +197,16 @@ export const useAreaStore = create<AreaState>()(
     }),
     {
       name: "brag-doc-areas",
-      version: 3,
-      migrate: (persistedState, version) => {
-        if (version < 2) {
-          const areas = seedAreas();
-          return { areas, events: seedEvents(areas), activeAreaId: null };
+      version: 4,
+      migrate: (_persistedState, version) => {
+        // Projects changed from arbitrarily-named to fixed weekly buckets in
+        // v4 — there's no sensible automatic mapping from an old named
+        // project to a week, so installs from before this shipped start
+        // fresh rather than carrying over a shape that no longer fits.
+        if (version < 4) {
+          return { areas: seedAreas(), events: [], activeAreaId: null };
         }
-        if (version < 3) {
-          // Existing installs predate the event log — backfill a plausible
-          // history from whatever areas/projects/workstreams the user already
-          // has, instead of leaving `events` empty and making everything
-          // they'd already done invisible to reports.
-          const state = persistedState as { areas: Area[]; activeAreaId: string | null };
-          return { ...state, events: seedEvents(state.areas) };
-        }
-        return persistedState as AreaState;
+        return _persistedState as AreaState;
       },
     }
   )

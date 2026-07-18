@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
-import { Area, Project, Workstream } from "@/lib/types";
+import { useEffect, useMemo, useState } from "react";
+import { Area, Workstream } from "@/lib/types";
 import { summarizeProject } from "@/lib/derive";
+import { formatWeekLabel, startOfWeekFor, toISODate } from "@/lib/weeks";
 import {
   Table,
   TableBody,
@@ -15,26 +16,54 @@ import { Button } from "@/components/ui/button";
 import { RagPill, PriorityChip, DateTag, Blocker } from "./status-pills";
 import { StarRating } from "./star-rating";
 import { WorkstreamEditorSheet } from "./workstream-editor-sheet";
-import { AddProjectDialog } from "./add-project-dialog";
 import { GenerateReportDialog } from "./generate-report-dialog";
-import { ChevronLeft, Pencil, Plus } from "lucide-react";
+import { AddAreaDialog } from "./add-area-dialog";
+import { EditWeekDialog } from "./edit-week-dialog";
+import { useAreaStore } from "@/lib/store";
+import { Archive, ArchiveRestore, ChevronLeft, ChevronRight, Pencil, Plus } from "lucide-react";
+import { toast } from "sonner";
 
-export function ProjectDetail({
-  area,
-  project,
-  onBack,
-  onProjectDeleted,
-}: {
-  area: Area;
-  project: Project;
-  onBack: () => void;
-  onProjectDeleted: () => void;
-}) {
-  const summary = summarizeProject(project);
+export function AreaWeekView({ area, onBack, onAreaDeleted }: { area: Area; onBack: () => void; onAreaDeleted: () => void }) {
+  const ensureCurrentWeekProject = useAreaStore((s) => s.ensureCurrentWeekProject);
+  const archiveArea = useAreaStore((s) => s.archiveArea);
+  const restoreArea = useAreaStore((s) => s.restoreArea);
 
+  const [viewedProjectId, setViewedProjectId] = useState<string | null>(null);
   const [editing, setEditing] = useState<Workstream | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [sheetSession, setSheetSession] = useState(0);
+
+  const currentWeekStart = useMemo(
+    () => toISODate(startOfWeekFor(new Date(), area.weekStartsOn)),
+    [area.weekStartsOn]
+  );
+
+  useEffect(() => {
+    if (!area.projects.some((p) => p.weekStart === currentWeekStart)) {
+      ensureCurrentWeekProject(area.id);
+    }
+  }, [area.id, area.projects, currentWeekStart, ensureCurrentWeekProject]);
+
+  const sortedProjects = useMemo(
+    () => [...area.projects].sort((a, b) => a.weekStart.localeCompare(b.weekStart)),
+    [area.projects]
+  );
+
+  const currentProject = sortedProjects.find((p) => p.weekStart === currentWeekStart);
+  const activeProject =
+    (viewedProjectId ? sortedProjects.find((p) => p.id === viewedProjectId) : undefined) ?? currentProject;
+
+  const activeIndex = activeProject ? sortedProjects.findIndex((p) => p.id === activeProject.id) : -1;
+  const canGoPrev = activeIndex > 0;
+  const canGoNext = activeIndex >= 0 && activeIndex < sortedProjects.length - 1;
+  const isCurrentWeek = !!activeProject && !!currentProject && activeProject.id === currentProject.id;
+
+  function goPrev() {
+    if (canGoPrev) setViewedProjectId(sortedProjects[activeIndex - 1].id);
+  }
+  function goNext() {
+    if (canGoNext) setViewedProjectId(sortedProjects[activeIndex + 1].id);
+  }
 
   function openAdd() {
     setEditing(null);
@@ -47,6 +76,14 @@ export function ProjectDetail({
     setSheetSession((n) => n + 1);
   }
 
+  if (!activeProject) {
+    return (
+      <div className="flex h-64 items-center justify-center text-sm text-muted-foreground">Setting up this week…</div>
+    );
+  }
+
+  const summary = summarizeProject(activeProject);
+
   return (
     <div>
       <button
@@ -54,33 +91,77 @@ export function ProjectDetail({
         className="mb-4 inline-flex items-center gap-1 text-[12px] text-muted-foreground transition-colors hover:text-foreground"
       >
         <ChevronLeft className="h-3.5 w-3.5" />
-        {area.name}
+        All areas
       </button>
 
       <div className="flex items-start justify-between gap-4">
         <div>
           <div className="mb-2 h-0.5 w-11 rounded-full" style={{ backgroundColor: area.color }} />
-          <h1 className="text-3xl font-light tracking-tight text-foreground">{project.name}</h1>
-          <p className="mt-1.5 max-w-xl text-[13px] font-light text-muted-foreground">
-            {project.descriptor} · Owner <b className="font-medium text-foreground">{project.owner}</b>
-          </p>
+          <h1 className="text-3xl font-light tracking-tight text-foreground">{area.name}</h1>
+          <p className="mt-1.5 max-w-xl text-[13px] font-light text-muted-foreground">{area.descriptor}</p>
         </div>
         <div className="flex flex-shrink-0 items-center gap-2">
-          <div className="flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-1.5 text-xs text-muted-foreground">
-            Avg difficulty
-            <StarRating value={Math.round(summary.avgDifficulty)} readOnly size="sm" color="text-electric" />
-          </div>
-          <div className="flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-1.5 text-xs text-muted-foreground">
-            Avg enjoyment
-            <StarRating value={Math.round(summary.avgEnjoyment)} readOnly size="sm" color="text-pink" />
-          </div>
-          <GenerateReportDialog
-            scope={{ level: "project", areaId: area.id, projectId: project.id }}
-            areaName={area.name}
-            projectName={project.name}
-          />
-          <AddProjectDialog areaId={area.id} project={project} onDeleted={onProjectDeleted} />
+          <GenerateReportDialog scope={{ level: "area", areaId: area.id }} areaName={area.name} />
+          <AddAreaDialog variant="edit" area={area} onDeleted={onAreaDeleted} />
+          {area.archived ? (
+            <Button variant="outline" size="sm" onClick={() => restoreArea(area.id)}>
+              <ArchiveRestore className="h-3.5 w-3.5" />
+              Restore
+            </Button>
+          ) : (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                archiveArea(area.id);
+                toast.success(`${area.name} archived`);
+              }}
+            >
+              <Archive className="h-3.5 w-3.5" />
+              Archive
+            </Button>
+          )}
         </div>
+      </div>
+
+      <div className="mt-6 flex items-center gap-2">
+        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={goPrev} disabled={!canGoPrev}>
+          <ChevronLeft className="h-4 w-4" />
+        </Button>
+        <div className="flex items-center gap-2">
+          <span className="text-[15px] font-medium text-foreground">{formatWeekLabel(activeProject.weekStart)}</span>
+          {isCurrentWeek && (
+            <span className="rounded-full bg-electric/15 px-2 py-0.5 text-[10px] font-medium text-electric uppercase tracking-wide">
+              This week
+            </span>
+          )}
+        </div>
+        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={goNext} disabled={!canGoNext}>
+          <ChevronRight className="h-4 w-4" />
+        </Button>
+      </div>
+
+      <div className="mt-3 flex flex-wrap items-center gap-x-6 gap-y-2 rounded-lg border border-border bg-card px-4 py-3 text-[12.5px]">
+        <div className="text-muted-foreground">
+          <span className="mr-1.5 text-[9px] font-semibold tracking-widest text-electric uppercase">Owner</span>
+          <span className="text-foreground">{activeProject.owner}</span>
+        </div>
+        <div className="text-muted-foreground">
+          <span className="mr-1.5 text-[9px] font-semibold tracking-widest text-electric uppercase">
+            Next milestone
+          </span>
+          <span className="text-foreground">
+            {activeProject.nextMilestoneDate || "—"}
+            {activeProject.nextMilestoneLabel && <> · {activeProject.nextMilestoneLabel}</>}
+          </span>
+        </div>
+        <div className="min-w-0 flex-1 text-muted-foreground">
+          <span className="mr-1.5 text-[9px] font-semibold tracking-widest text-electric uppercase">
+            Need to know
+          </span>
+          <span className="text-foreground">{activeProject.needToKnow || "Nothing flagged."}</span>
+        </div>
+        <EditWeekDialog areaId={area.id} project={activeProject} />
       </div>
 
       <div className="mt-5 flex items-center justify-between">
@@ -96,9 +177,9 @@ export function ProjectDetail({
       </div>
 
       <div className="mt-4 overflow-hidden rounded-xl border border-border bg-card shadow-sm">
-        {project.workstreams.length === 0 ? (
+        {activeProject.workstreams.length === 0 ? (
           <div className="px-6 py-14 text-center text-sm text-muted-foreground">
-            No workstreams yet in {project.name}. Add the first one to start tracking status.
+            No workstreams yet for this week. Add the first one to start tracking status.
           </div>
         ) : (
           <Table>
@@ -107,9 +188,7 @@ export function ProjectDetail({
                 <TableHead className="text-[10px] font-medium tracking-wider text-white uppercase">
                   Workstream
                 </TableHead>
-                <TableHead className="text-[10px] font-medium tracking-wider text-white uppercase">
-                  Status
-                </TableHead>
+                <TableHead className="text-[10px] font-medium tracking-wider text-white uppercase">Status</TableHead>
                 <TableHead className="text-[10px] font-medium tracking-wider text-white uppercase">
                   Priority
                 </TableHead>
@@ -122,9 +201,7 @@ export function ProjectDetail({
                 <TableHead className="text-[10px] font-medium tracking-wider text-white uppercase">
                   Next steps
                 </TableHead>
-                <TableHead className="text-[10px] font-medium tracking-wider text-white uppercase">
-                  Target
-                </TableHead>
+                <TableHead className="text-[10px] font-medium tracking-wider text-white uppercase">Target</TableHead>
                 <TableHead className="text-[10px] font-medium tracking-wider text-white uppercase">
                   Difficulty
                 </TableHead>
@@ -135,7 +212,7 @@ export function ProjectDetail({
               </TableRow>
             </TableHeader>
             <TableBody>
-              {project.workstreams.map((ws) => (
+              {activeProject.workstreams.map((ws) => (
                 <TableRow key={ws.id} className="cursor-pointer align-top" onClick={() => openEdit(ws)}>
                   <TableCell className="align-top whitespace-normal">
                     <div className="text-[12.5px] font-medium text-foreground">{ws.name}</div>
@@ -181,7 +258,7 @@ export function ProjectDetail({
       <WorkstreamEditorSheet
         key={sheetSession}
         areaId={area.id}
-        projectId={project.id}
+        projectId={activeProject.id}
         workstream={editing}
         open={sheetOpen}
         onOpenChange={setSheetOpen}

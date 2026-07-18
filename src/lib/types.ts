@@ -22,9 +22,15 @@ export interface Workstream {
   updatedAt: string;
 }
 
+/**
+ * A project is a fixed one-week bucket of work for an area — a new one is
+ * created automatically each week (see `weeks.ts` / `ensureCurrentWeekProject`).
+ */
 export interface Project {
   id: string;
-  name: string;
+  /** ISO date (local midnight) marking the first day of this project's week */
+  weekStart: string;
+  /** optional short note on what this week's focus was */
   descriptor: string;
   owner: string;
   /** e.g. "28 Jul" */
@@ -45,6 +51,8 @@ export interface Area {
   archived: boolean;
   createdAt: string;
   owner: string;
+  /** 0 (Sunday) - 6 (Saturday): which day this area's week starts on */
+  weekStartsOn: number;
   projects: Project[];
 }
 
