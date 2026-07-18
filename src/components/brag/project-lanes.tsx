@@ -4,6 +4,7 @@ import { Area } from "@/lib/types";
 import { summarizeProject, summarizeArea } from "@/lib/derive";
 import { StarRating } from "./star-rating";
 import { AddProjectDialog } from "./add-project-dialog";
+import { GenerateReportDialog } from "./generate-report-dialog";
 import { cn } from "@/lib/utils";
 import { ChevronLeft } from "lucide-react";
 
@@ -41,13 +42,22 @@ export function ProjectLanes({
           All areas
         </button>
 
-        <div className="mb-1 h-0.5 w-11 rounded-full" style={{ backgroundColor: area.color }} />
-        <h1 className="text-3xl font-light tracking-tight">{area.name}</h1>
-        <p className="mt-2 text-[13px] text-smoke">
-          {area.descriptor} · <b className="font-medium text-white">{area.projects.length}</b> project
-          {area.projects.length === 1 ? "" : "s"} ·{" "}
-          <b className="font-medium text-white">{summary.total}</b> total workstreams
-        </p>
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <div className="mb-1 h-0.5 w-11 rounded-full" style={{ backgroundColor: area.color }} />
+            <h1 className="text-3xl font-light tracking-tight">{area.name}</h1>
+            <p className="mt-2 text-[13px] text-smoke">
+              {area.descriptor} · <b className="font-medium text-white">{area.projects.length}</b> project
+              {area.projects.length === 1 ? "" : "s"} ·{" "}
+              <b className="font-medium text-white">{summary.total}</b> total workstreams
+            </p>
+          </div>
+          <GenerateReportDialog
+            scope={{ level: "area", areaId: area.id }}
+            areaName={area.name}
+            triggerClassName="flex-shrink-0 border-white/15 bg-transparent text-white hover:bg-white/10"
+          />
+        </div>
 
         <div className="mt-6 flex flex-col gap-3">
           {area.projects.length === 0 && (

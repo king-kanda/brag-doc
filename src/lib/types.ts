@@ -48,6 +48,26 @@ export interface Area {
   projects: Project[];
 }
 
+/**
+ * A record of a workstream's status changing. Names are snapshotted at the
+ * time of the event so reports stay accurate even if the workstream, project,
+ * or area is later renamed or deleted.
+ */
+export interface WorkstreamEvent {
+  id: string;
+  areaId: string;
+  areaName: string;
+  projectId: string;
+  projectName: string;
+  workstreamId: string;
+  workstreamName: string;
+  workstreamDescriptor: string;
+  /** null = the workstream was just created */
+  fromStatus: RagStatus | null;
+  toStatus: RagStatus;
+  timestamp: string;
+}
+
 export const RAG_LABEL: Record<RagStatus, string> = {
   done: "Done",
   progress: "In progress",

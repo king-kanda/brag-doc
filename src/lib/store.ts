@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-import { Area, Project, Workstream } from "./types";
-import { seedAreas } from "./seed";
+import { Area, Project, Workstream, WorkstreamEvent } from "./types";
+import { seedAreas, seedEvents } from "./seed";
 
 function id() {
   return Math.random().toString(36).slice(2, 10);
@@ -13,6 +13,7 @@ function mapProject(area: Area, projectId: string, fn: (p: Project) => Project):
 
 interface AreaState {
   areas: Area[];
+  events: WorkstreamEvent[];
   activeAreaId: string | null;
   setActiveArea: (id: string) => void;
   addArea: (input: { name: string; descriptor: string; color: string }) => void;
@@ -27,10 +28,13 @@ interface AreaState {
   deleteWorkstream: (areaId: string, projectId: string, wsId: string) => void;
 }
 
+const initialAreas = seedAreas();
+
 export const useAreaStore = create<AreaState>()(
   persist(
     (set, get) => ({
-      areas: seedAreas(),
+      areas: initialAreas,
+      events: seedEvents(initialAreas),
       activeAreaId: null,
       setActiveArea: (areaId) => set({ activeAreaId: areaId }),
       addArea: ({ name, descriptor, color }) => {
@@ -83,30 +87,68 @@ export const useAreaStore = create<AreaState>()(
             a.id === areaId ? { ...a, projects: a.projects.filter((p) => p.id !== projectId) } : a
           ),
         })),
-      addWorkstream: (areaId, projectId, ws) =>
+      addWorkstream: (areaId, projectId, ws) => {
+        const area = get().areas.find((a) => a.id === areaId);
+        const project = area?.projects.find((p) => p.id === projectId);
+        const timestamp = new Date().toISOString();
+        const newWorkstream: Workstream = { ...ws, id: id(), updatedAt: timestamp };
+        const event: WorkstreamEvent = {
+          id: id(),
+          areaId,
+          areaName: area?.name ?? "",
+          projectId,
+          projectName: project?.name ?? "",
+          workstreamId: newWorkstream.id,
+          workstreamName: newWorkstream.name,
+          workstreamDescriptor: newWorkstream.descriptor,
+          fromStatus: null,
+          toStatus: newWorkstream.status,
+          timestamp,
+        };
+        set((s) => ({
+          areas: s.areas.map((a) =>
+            a.id === areaId
+              ? mapProject(a, projectId, (p) => ({ ...p, workstreams: [...p.workstreams, newWorkstream] }))
+              : a
+          ),
+          events: [...s.events, event],
+        }));
+      },
+      updateWorkstream: (areaId, projectId, wsId, patch) => {
+        const area = get().areas.find((a) => a.id === areaId);
+        const project = area?.projects.find((p) => p.id === projectId);
+        const existing = project?.workstreams.find((w) => w.id === wsId);
+        const timestamp = new Date().toISOString();
+        const statusChanged =
+          existing !== undefined && patch.status !== undefined && patch.status !== existing.status;
+        const event: WorkstreamEvent | null =
+          statusChanged && existing
+            ? {
+                id: id(),
+                areaId,
+                areaName: area?.name ?? "",
+                projectId,
+                projectName: project?.name ?? "",
+                workstreamId: wsId,
+                workstreamName: patch.name ?? existing.name,
+                workstreamDescriptor: patch.descriptor ?? existing.descriptor,
+                fromStatus: existing.status,
+                toStatus: patch.status!,
+                timestamp,
+              }
+            : null;
         set((s) => ({
           areas: s.areas.map((a) =>
             a.id === areaId
               ? mapProject(a, projectId, (p) => ({
                   ...p,
-                  workstreams: [...p.workstreams, { ...ws, id: id(), updatedAt: new Date().toISOString() }],
+                  workstreams: p.workstreams.map((w) => (w.id === wsId ? { ...w, ...patch, updatedAt: timestamp } : w)),
                 }))
               : a
           ),
-        })),
-      updateWorkstream: (areaId, projectId, wsId, patch) =>
-        set((s) => ({
-          areas: s.areas.map((a) =>
-            a.id === areaId
-              ? mapProject(a, projectId, (p) => ({
-                  ...p,
-                  workstreams: p.workstreams.map((w) =>
-                    w.id === wsId ? { ...w, ...patch, updatedAt: new Date().toISOString() } : w
-                  ),
-                }))
-              : a
-          ),
-        })),
+          events: event ? [...s.events, event] : s.events,
+        }));
+      },
       deleteWorkstream: (areaId, projectId, wsId) =>
         set((s) => ({
           areas: s.areas.map((a) =>
@@ -121,10 +163,14 @@ export const useAreaStore = create<AreaState>()(
     }),
     {
       name: "brag-doc-areas",
-      version: 2,
+      version: 3,
       migrate: (persistedState, version) => {
         if (version < 2) {
-          return { areas: seedAreas(), activeAreaId: null };
+          const areas = seedAreas();
+          return { areas, events: seedEvents(areas), activeAreaId: null };
+        }
+        if (version < 3) {
+          return { ...(persistedState as object), events: [] };
         }
         return persistedState as AreaState;
       },

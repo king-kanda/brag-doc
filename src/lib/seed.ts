@@ -1,4 +1,4 @@
-import { Area, Project, Workstream } from "./types";
+import { Area, Project, Workstream, WorkstreamEvent } from "./types";
 
 function id() {
   return Math.random().toString(36).slice(2, 10);
@@ -12,6 +12,12 @@ function ws(w: Omit<Workstream, "id" | "updatedAt">): Workstream {
 
 function project(p: Omit<Project, "id" | "createdAt">): Project {
   return { ...p, id: id(), createdAt: now };
+}
+
+function daysAgo(n: number): string {
+  const d = new Date();
+  d.setDate(d.getDate() - n);
+  return d.toISOString();
 }
 
 export function seedAreas(): Area[] {
@@ -258,4 +264,51 @@ export function seedAreas(): Area[] {
       ],
     },
   ];
+}
+
+/** Fabricates a plausible status-change history for the seeded workstreams, so reports have something to show out of the box. */
+export function seedEvents(areas: Area[]): WorkstreamEvent[] {
+  const events: WorkstreamEvent[] = [];
+  let offset = 3;
+
+  for (const area of areas) {
+    for (const proj of area.projects) {
+      for (const w of proj.workstreams) {
+        const base = {
+          areaId: area.id,
+          areaName: area.name,
+          projectId: proj.id,
+          projectName: proj.name,
+          workstreamId: w.id,
+          workstreamName: w.name,
+          workstreamDescriptor: w.descriptor,
+        };
+        const createdDaysAgo = offset + 12;
+
+        events.push({ ...base, id: id(), fromStatus: null, toStatus: "notstarted", timestamp: daysAgo(createdDaysAgo) });
+
+        if (w.status !== "notstarted") {
+          events.push({
+            ...base,
+            id: id(),
+            fromStatus: "notstarted",
+            toStatus: "progress",
+            timestamp: daysAgo(createdDaysAgo - 4),
+          });
+        }
+        if (w.status === "done") {
+          events.push({
+            ...base,
+            id: id(),
+            fromStatus: "progress",
+            toStatus: "done",
+            timestamp: daysAgo(Math.max(offset, 1)),
+          });
+        }
+        offset += 2;
+      }
+    }
+  }
+
+  return events;
 }

@@ -16,6 +16,7 @@ import { RagPill, PriorityChip, DateTag, Blocker } from "./status-pills";
 import { StarRating } from "./star-rating";
 import { WorkstreamEditorSheet } from "./workstream-editor-sheet";
 import { AddProjectDialog } from "./add-project-dialog";
+import { GenerateReportDialog } from "./generate-report-dialog";
 import { ChevronLeft, Pencil, Plus } from "lucide-react";
 
 export function ProjectDetail({
@@ -73,6 +74,11 @@ export function ProjectDetail({
             Avg enjoyment
             <StarRating value={Math.round(summary.avgEnjoyment)} readOnly size="sm" color="text-pink" />
           </div>
+          <GenerateReportDialog
+            scope={{ level: "project", areaId: area.id, projectId: project.id }}
+            areaName={area.name}
+            projectName={project.name}
+          />
           <AddProjectDialog areaId={area.id} project={project} onDeleted={onProjectDeleted} />
         </div>
       </div>
