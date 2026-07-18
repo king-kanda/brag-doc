@@ -170,7 +170,12 @@ export const useAreaStore = create<AreaState>()(
           return { areas, events: seedEvents(areas), activeAreaId: null };
         }
         if (version < 3) {
-          return { ...(persistedState as object), events: [] };
+          // Existing installs predate the event log — backfill a plausible
+          // history from whatever areas/projects/workstreams the user already
+          // has, instead of leaving `events` empty and making everything
+          // they'd already done invisible to reports.
+          const state = persistedState as { areas: Area[]; activeAreaId: string | null };
+          return { ...state, events: seedEvents(state.areas) };
         }
         return persistedState as AreaState;
       },
