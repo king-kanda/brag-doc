@@ -1,0 +1,533 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Project Status — [ Company ]</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@200;300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --ink: #08081a; --slate: #181838; --snow: #f8f9fc; --cloud: #f0f1f6;
+  --electric: #7c6cf0; --coral: #ff6b6b; --mint: #00d4a0; --sky: #4da6ff;
+  --amber: #f5a623; --pink: #e84393; --smoke: #8c95ab; --charcoal: #2a2d3e;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body {
+  height: 100%; overflow: hidden;
+  font-family: 'Outfit', sans-serif; font-weight: 300; color: var(--charcoal);
+  -webkit-font-smoothing: antialiased; background: var(--ink);
+}
+
+/* Horizontal deck */
+.deck { display: flex; height: 100vh; overflow-x: auto; overflow-y: hidden;
+  scroll-snap-type: x mandatory; scroll-behavior: smooth; -webkit-overflow-scrolling: touch; }
+.slide { min-width: 100vw; width: 100vw; height: 100vh; scroll-snap-align: start;
+  position: relative; display: flex; align-items: center; justify-content: center;
+  overflow: hidden; flex-shrink: 0; background: var(--snow); }
+.slide.darkslide { background: linear-gradient(135deg, #08081a 0%, #12123a 50%, #1a1248 100%); }
+
+/* Fixed 16:9 stage — scaled by JS so everything always fits on one screen */
+.stage { width: 1280px; height: 720px; position: relative; flex-shrink: 0;
+  transform-origin: center center; padding: 40px 52px; }
+.stage.dark { color: #fff; }
+
+.orb { position: absolute; border-radius: 50%; filter: blur(90px); opacity: 0.10; pointer-events: none; }
+
+/* Headings */
+.line-accent { width: 46px; height: 2px; margin-bottom: 14px; border-radius: 1px; }
+h2 { font-weight: 300; font-size: 38px; line-height: 1.05; letter-spacing: -0.025em; }
+.dark h2 { color: #fff; }
+.sub { font-size: 13.5px; line-height: 1.55; font-weight: 300; max-width: 760px; color: var(--smoke); margin-top: 7px; }
+.accent { color: var(--electric); }
+
+/* head row */
+.status-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 24px; margin-top: 16px; }
+.summary-row { display: flex; gap: 9px; flex-shrink: 0; }
+.summary-pill { display: flex; align-items: center; gap: 8px; background: #fff; border: 1px solid var(--cloud);
+  border-radius: 10px; padding: 8px 15px; box-shadow: 0 1px 3px rgba(0,0,0,0.03); }
+.summary-pill .dot { width: 9px; height: 9px; border-radius: 50%; }
+.summary-pill .n { font-size: 17px; font-weight: 500; color: var(--charcoal); line-height: 1; }
+.summary-pill .lbl { font-size: 9.5px; color: var(--smoke); font-weight: 400; letter-spacing: 0.04em; text-transform: uppercase; }
+
+/* Table */
+.status-wrap { margin-top: 18px; border-radius: 13px; overflow: hidden;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.04), 0 10px 30px rgba(0,0,0,0.04);
+  border: 1px solid var(--cloud); background: #fff; }
+table.status { width: 100%; border-collapse: separate; border-spacing: 0; table-layout: fixed; }
+table.status thead th { background: var(--charcoal); color: #fff; font-size: 9.5px; font-weight: 500;
+  letter-spacing: 0.1em; text-transform: uppercase; padding: 12px 14px; text-align: left; vertical-align: middle; }
+table.status thead th.c { text-align: center; }
+table.status td { padding: 10px 14px; font-size: 11.5px; line-height: 1.4; font-weight: 300;
+  border-bottom: 1px solid var(--cloud); color: var(--charcoal); vertical-align: top; }
+table.status tbody tr:last-child td { border-bottom: none; }
+table.status tbody tr:nth-child(even) td { background: #fafbfe; }
+table.status tbody tr:hover td { background: rgba(124,108,240,0.045); transition: background .15s; }
+
+col.ws { width: 15%; } col.st { width: 9%; } col.pr { width: 6.5%; }
+col.bl { width: 15.5%; } col.de { width: 21.5%; } col.ns { width: 18.5%; } col.dt { width: 14%; }
+
+.ws-name { font-size: 12.5px; font-weight: 500; color: var(--ink); letter-spacing: -0.01em; }
+.ws-sub { font-size: 9px; font-weight: 400; color: var(--smoke); margin-top: 2px; letter-spacing: 0.05em; text-transform: uppercase; }
+
+/* RAG */
+.rag { display: inline-flex; align-items: center; gap: 7px; padding: 4px 10px 4px 8px; border-radius: 20px;
+  font-size: 9.5px; font-weight: 500; white-space: nowrap; }
+.rag .d { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.rag.done { background: rgba(0,212,160,0.10); color: #0a9b78; }
+.rag.done .d { background: var(--mint); box-shadow: 0 0 0 3px rgba(0,212,160,0.14); }
+.rag.progress { background: rgba(245,166,35,0.12); color: #b9791a; }
+.rag.progress .d { background: var(--amber); box-shadow: 0 0 0 3px rgba(245,166,35,0.16); }
+.rag.notstarted { background: rgba(255,107,107,0.10); color: #d4534f; }
+.rag.notstarted .d { background: var(--coral); box-shadow: 0 0 0 3px rgba(255,107,107,0.14); }
+.cell-c { text-align: center; }
+
+/* Priority chip — monochrome electric, never confused with RAG */
+.prio { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px;
+  border-radius: 8px; font-size: 12.5px; font-weight: 600; letter-spacing: -0.01em; }
+.prio.p1 { background: var(--electric); color: #fff; }
+.prio.p2 { background: rgba(124,108,240,0.72); color: #fff; }
+.prio.p3 { background: rgba(124,108,240,0.42); color: #3b2f8f; }
+.prio.p4 { background: rgba(124,108,240,0.22); color: #5446b0; }
+.prio.p5 { background: rgba(124,108,240,0.12); color: #7c6cf0; }
+
+.blk-none { color: var(--smoke); font-style: italic; }
+.blk { color: #c0392b; font-weight: 400; }
+.blk::before { content: "⚠ "; font-style: normal; }
+.next b, .detail b { font-weight: 500; color: var(--ink); }
+
+.date-main { font-size: 11.5px; font-weight: 500; color: var(--ink); }
+.date-tag { display: inline-block; margin-top: 3px; font-size: 8px; font-weight: 500; letter-spacing: 0.06em;
+  text-transform: uppercase; padding: 2px 7px; border-radius: 5px; }
+.date-tag.ontrack { background: rgba(0,212,160,0.12); color: #0a9b78; }
+.date-tag.risk { background: rgba(245,166,35,0.14); color: #b9791a; }
+.date-tag.late { background: rgba(255,107,107,0.12); color: #d4534f; }
+.date-tag.complete { background: var(--cloud); color: var(--smoke); }
+
+/* legend + footer */
+.footer-row { display: flex; align-items: center; justify-content: space-between; margin-top: 14px; }
+.legend { display: flex; flex-wrap: wrap; gap: 18px; align-items: center; }
+.legend-group { display: flex; align-items: center; gap: 9px; }
+.legend-label { font-size: 9px; font-weight: 500; letter-spacing: 0.1em; text-transform: uppercase; color: var(--smoke); }
+.legend-item { display: flex; align-items: center; gap: 6px; font-size: 10px; color: var(--charcoal); font-weight: 300; }
+.legend-item .d { width: 8px; height: 8px; border-radius: 50%; }
+.legend-divider { width: 1px; height: 18px; background: var(--cloud); }
+.meta { font-size: 10px; color: var(--smoke); font-weight: 300; }
+
+/* ===== OVERVIEW (front) lanes ===== */
+.lanes { margin-top: 22px; display: flex; flex-direction: column; gap: 13px; }
+.lane { display: grid; grid-template-columns: 148px minmax(0,1fr) 118px 128px 232px; align-items: center; gap: 20px;
+  background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.07);
+  border-left: 3px solid; border-radius: 14px; padding: 18px 24px; }
+.lane.amber { border-left-color: var(--amber); }
+.lane.red { border-left-color: var(--coral); }
+.lane.green { border-left-color: var(--mint); }
+.lane-name { font-size: 19px; font-weight: 500; color: #fff; letter-spacing: -0.01em; }
+.lane-tag { display: block; font-size: 9.5px; font-weight: 400; color: var(--smoke); margin-top: 3px; letter-spacing: 0.08em; text-transform: uppercase; }
+.lane-sowhat { font-size: 12.5px; line-height: 1.5; font-weight: 300; color: #d7dae6; margin-top: 8px; }
+.lane-sowhat b { color: #fff; font-weight: 500; }
+.lane-col { border-left: 1px solid rgba(255,255,255,0.08); padding-left: 18px; align-self: stretch; display: flex; flex-direction: column; justify-content: center; }
+.col-label { font-size: 8.5px; font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase; color: var(--electric); margin-bottom: 6px; }
+.col-val { font-size: 12px; line-height: 1.45; font-weight: 300; color: #c8ccda; }
+.col-val b { color: #fff; font-weight: 500; }
+.col-name { font-size: 13px; font-weight: 500; color: #fff; }
+.col-date { font-size: 15px; font-weight: 500; color: #fff; }
+.col-sub { font-size: 9px; color: var(--smoke); margin-top: 3px; letter-spacing: 0.06em; text-transform: uppercase; }
+.rag.big { font-size: 10.5px; padding: 7px 13px 7px 10px; }
+.rag.big .d { width: 9px; height: 9px; }
+.portfolio-line { font-size: 12.5px; color: var(--smoke); margin-top: 7px; }
+.portfolio-line b { color: #fff; font-weight: 500; }
+
+/* ===== TEMPLATE styling ===== */
+.tmpl-badge { display: inline-block; background: rgba(124,108,240,0.12); color: var(--electric);
+  font-size: 9px; font-weight: 600; letter-spacing: 0.18em; text-transform: uppercase; padding: 4px 11px; border-radius: 6px; margin-bottom: 12px; }
+.ph { color: var(--smoke); font-style: italic; font-weight: 300; }
+.rag.ph-pill { background: var(--cloud); color: var(--smoke); border: 1px dashed #cdd2e0; font-style: normal; }
+.rag.ph-pill .d { background: #c5cad8; box-shadow: none; }
+.prio.ph-pill { background: var(--cloud); color: var(--smoke); border: 1px dashed #cdd2e0; }
+.tmpl-note { font-size: 10px; color: var(--smoke); margin-top: 12px; font-weight: 300; }
+.tmpl-note b { color: var(--charcoal); font-weight: 500; }
+
+/* nav */
+.indicator { position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%); display: flex; gap: 8px;
+  z-index: 100; background: rgba(8,8,26,0.55); backdrop-filter: blur(12px); padding: 8px 16px; border-radius: 20px; }
+.indicator-dot { width: 8px; height: 8px; border-radius: 50%; background: rgba(255,255,255,0.25); cursor: pointer; transition: all .25s; }
+.indicator-dot.active { background: var(--electric); width: 24px; border-radius: 4px; }
+.nav-arrows { position: fixed; bottom: 18px; right: 28px; display: flex; gap: 6px; z-index: 100; }
+.nav-btn { width: 34px; height: 34px; border-radius: 50%; background: rgba(8,8,26,0.4); border: 1px solid rgba(255,255,255,0.12);
+  color: rgba(255,255,255,0.6); display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 14px; backdrop-filter: blur(8px); transition: all .2s; }
+.nav-btn:hover { background: rgba(8,8,26,0.7); color: #fff; }
+.slide-counter { position: fixed; bottom: 22px; left: 28px; font-size: 11px; color: var(--smoke); z-index: 100; }
+</style>
+</head>
+<body>
+
+<div class="indicator" id="indicator"></div>
+<div class="nav-arrows"><div class="nav-btn" onclick="goSlide(-1)">←</div><div class="nav-btn" onclick="goSlide(1)">→</div></div>
+<div class="slide-counter" id="counter">1 / 4</div>
+
+<div class="deck" id="deck">
+<!--
+  ============================================================================
+  STATUS DECK — BOILERPLATE TEMPLATE
+  ============================================================================
+  HOW TO USE
+  - Replace anything in [ square brackets ] and any italic placeholder text.
+  - Duplicate a detail slide (<section class="slide">…</section>) per project.
+  - Keep rows ≤ 6 per table so each slide fits on one screen.
+  - Navigate with arrow keys / on-screen arrows; everything auto-scales to fit.
+
+  STATUS PILL (RAG) — swap the class and label together:
+    <span class="rag done">…Done</span>          (green / mint)
+    <span class="rag progress">…In progress</span> (amber)
+    <span class="rag notstarted">…Not started</span> (red / coral)
+
+  PRIORITY CHIP — p1 (highest) … p5 (lowest):
+    <span class="prio p1">1</span> … <span class="prio p5">5</span>
+
+  TARGET DATE TAG — pick one:
+    <span class="date-tag ontrack">On track</span>
+    <span class="date-tag risk">At risk</span>
+    <span class="date-tag late">Blocked</span>
+    <span class="date-tag complete">Complete</span>
+
+  BLOCKERS — none vs. a real blocker:
+    <span class="blk-none">None</span>
+    <span class="blk">What is blocking this, and on whom.</span>
+
+  OVERVIEW LANE accent — set the left border via the lane class:
+    <div class="lane green">  /  <div class="lane amber">  /  <div class="lane red">
+  ============================================================================
+-->
+
+<!-- ============ SLIDE 1: HIGH-LEVEL OVERVIEW ============ -->
+<section class="slide darkslide">
+  <div class="stage dark">
+    <div class="orb" style="width:520px;height:520px;background:var(--electric);top:-160px;right:-60px;"></div>
+    <div class="orb" style="width:340px;height:340px;background:var(--coral);bottom:-120px;left:-50px;"></div>
+    <div class="line-accent" style="background:var(--electric);"></div>
+    <h2>High-Level Overview</h2>
+    <div class="portfolio-line">One line summarizing the portfolio — e.g. <b>[ N ]</b> active projects, how many on track vs. needing attention.</div>
+
+    <div class="lanes">
+      <!-- One lane per project. Set lane class to green / amber / red. Duplicate as needed (aim for ≤ 4). -->
+      <div class="lane green">
+        <div><span class="rag done big"><span class="d"></span>On track</span></div>
+        <div>
+          <div class="lane-name">[ Project name ]<span class="lane-tag">Short descriptor</span></div>
+          <div class="lane-sowhat">The one thing leadership should take away — where it stands and the <b>single biggest risk or dependency</b>.</div>
+        </div>
+        <div class="lane-col"><div class="col-label">Owner</div><div class="col-name">[ Owner ]</div></div>
+        <div class="lane-col"><div class="col-label">Next milestone</div><div class="col-date">[ Mon YYYY ]</div><div class="col-sub">[ Milestone ]</div></div>
+        <div class="lane-col"><div class="col-label">Need to know</div><div class="col-val">The decision or input you need from this room, by <b>[ date ]</b>.</div></div>
+      </div>
+
+      <div class="lane amber">
+        <div><span class="rag progress big"><span class="d"></span>On track · 1 risk</span></div>
+        <div>
+          <div class="lane-name">[ Project name ]<span class="lane-tag">Short descriptor</span></div>
+          <div class="lane-sowhat">The one thing leadership should take away — where it stands and the <b>single biggest risk or dependency</b>.</div>
+        </div>
+        <div class="lane-col"><div class="col-label">Owner</div><div class="col-name">[ Owner ]</div></div>
+        <div class="lane-col"><div class="col-label">Next milestone</div><div class="col-date">[ Mon YYYY ]</div><div class="col-sub">[ Milestone ]</div></div>
+        <div class="lane-col"><div class="col-label">Need to know</div><div class="col-val">The decision or input you need from this room, by <b>[ date ]</b>.</div></div>
+      </div>
+
+      <div class="lane red">
+        <div><span class="rag notstarted big"><span class="d"></span>Needs attention</span></div>
+        <div>
+          <div class="lane-name">[ Project name ]<span class="lane-tag">Short descriptor</span></div>
+          <div class="lane-sowhat">The one thing leadership should take away — where it stands and the <b>single biggest risk or dependency</b>.</div>
+        </div>
+        <div class="lane-col"><div class="col-label">Owner</div><div class="col-name">[ Owner ]</div></div>
+        <div class="lane-col"><div class="col-label">Next milestone</div><div class="col-date">[ Mon YYYY ]</div><div class="col-sub">[ Milestone ]</div></div>
+        <div class="lane-col"><div class="col-label">Need to know</div><div class="col-val">The decision or input you need from this room, by <b>[ date ]</b>.</div></div>
+      </div>
+    </div>
+
+    <div class="meta" style="margin-top:20px;color:rgba(255,255,255,0.35);">[ Company ] · Portfolio status · As of [ Month YYYY ]</div>
+  </div>
+</section>
+
+<!-- ============ SLIDE 2: PROJECT DETAIL (duplicate this section per project) ============ -->
+<section class="slide">
+  <div class="stage">
+    <div class="orb" style="width:460px;height:460px;background:var(--electric);top:-150px;right:-70px;"></div>
+    <div class="line-accent" style="background:var(--electric);"></div>
+    <h2>[ Project name ] — Status</h2>
+    <div class="status-head">
+      <p class="sub ph">One line on what this project is and the milestone it's driving toward.</p>
+      <div class="summary-row">
+        <div class="summary-pill"><span class="dot" style="background:var(--mint);"></span><span class="n">0</span><span class="lbl">Done</span></div>
+        <div class="summary-pill"><span class="dot" style="background:var(--amber);"></span><span class="n">0</span><span class="lbl">In&nbsp;prog</span></div>
+        <div class="summary-pill"><span class="dot" style="background:var(--coral);"></span><span class="n">0</span><span class="lbl">Not&nbsp;started</span></div>
+      </div>
+    </div>
+    <div class="status-wrap">
+      <table class="status">
+        <colgroup><col class="ws"><col class="st"><col class="pr"><col class="bl"><col class="de"><col class="ns"><col class="dt"></colgroup>
+        <thead><tr><th>Workstream</th><th class="c">Status</th><th class="c">Priority</th><th>Blockers</th><th>Details</th><th>Next steps</th><th>Target / milestone</th></tr></thead>
+        <tbody>
+          <tr>
+            <td><div class="ws-name">[ Workstream ]</div><div class="ws-sub">Short descriptor</div></td>
+            <td class="cell-c"><span class="rag done"><span class="d"></span>Done</span></td>
+            <td class="cell-c"><span class="prio p1">1</span></td>
+            <td><span class="blk-none">None</span></td>
+            <td class="detail ph">What's been accomplished so far.</td>
+            <td class="next ph">No open actions, or the next thing to watch.</td>
+            <td><div class="date-main">DD Mon</div><span class="date-tag complete">Complete</span></td>
+          </tr>
+          <tr>
+            <td><div class="ws-name">[ Workstream ]</div><div class="ws-sub">Short descriptor</div></td>
+            <td class="cell-c"><span class="rag progress"><span class="d"></span>In progress</span></td>
+            <td class="cell-c"><span class="prio p1">1</span></td>
+            <td><span class="blk">What is blocking this, and on whom.</span></td>
+            <td class="detail ph">Current state in one or two lines.</td>
+            <td class="next ph"><b>The immediate next action</b>, then what follows.</td>
+            <td><div class="date-main">DD Mon</div><span class="date-tag ontrack">On track</span></td>
+          </tr>
+          <tr>
+            <td><div class="ws-name">[ Workstream ]</div><div class="ws-sub">Short descriptor</div></td>
+            <td class="cell-c"><span class="rag progress"><span class="d"></span>In progress</span></td>
+            <td class="cell-c"><span class="prio p2">2</span></td>
+            <td><span class="blk-none">None</span></td>
+            <td class="detail ph">Current state in one or two lines.</td>
+            <td class="next ph">The immediate next action.</td>
+            <td><div class="date-main">DD Mon</div><span class="date-tag risk">At risk</span></td>
+          </tr>
+          <tr>
+            <td><div class="ws-name">[ Workstream ]</div><div class="ws-sub">Short descriptor</div></td>
+            <td class="cell-c"><span class="rag notstarted"><span class="d"></span>Not started</span></td>
+            <td class="cell-c"><span class="prio p3">3</span></td>
+            <td><span class="blk">Dependency or blocker, if any.</span></td>
+            <td class="detail ph">What this will cover when it starts.</td>
+            <td class="next ph">The trigger to kick it off.</td>
+            <td><div class="date-main">DD Mon</div><span class="date-tag ontrack">On track</span></td>
+          </tr>
+          <tr>
+            <td><div class="ws-name ph">[ Workstream ]</div><div class="ws-sub">Short descriptor</div></td>
+            <td class="cell-c"><span class="rag ph-pill"><span class="d"></span>Status</span></td>
+            <td class="cell-c"><span class="prio ph-pill">P</span></td>
+            <td><span class="ph">Blockers …</span></td>
+            <td class="detail ph">Details …</td>
+            <td class="next ph">Next steps …</td>
+            <td><div class="date-main ph">DD Mon</div></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="footer-row">
+      <div class="legend">
+        <div class="legend-group"><span class="legend-label">Status</span>
+          <span class="legend-item"><span class="d" style="background:var(--coral);"></span>Not started</span>
+          <span class="legend-item"><span class="d" style="background:var(--amber);"></span>In progress</span>
+          <span class="legend-item"><span class="d" style="background:var(--mint);"></span>Done</span>
+        </div>
+        <div class="legend-divider"></div>
+        <div class="legend-group"><span class="legend-label">Priority</span>
+          <span class="legend-item"><span class="prio p1" style="width:17px;height:17px;border-radius:5px;font-size:9px;">1</span>Highest</span>
+          <span class="legend-item">→</span>
+          <span class="legend-item"><span class="prio p5" style="width:17px;height:17px;border-radius:5px;font-size:9px;">5</span>Lowest</span>
+        </div>
+      </div>
+      <div class="meta">[ Milestone / go-live: Month YYYY ]</div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ SLIDE 3: PROJECT DETAIL (copy of slide 2 — fill in or delete) ============ -->
+<section class="slide">
+  <div class="stage">
+    <div class="orb" style="width:460px;height:460px;background:var(--mint);top:-150px;right:-70px;"></div>
+    <div class="line-accent" style="background:var(--mint);"></div>
+    <h2>[ Project name ] — Status</h2>
+    <div class="status-head">
+      <p class="sub ph">One line on what this project is and the milestone it's driving toward.</p>
+      <div class="summary-row">
+        <div class="summary-pill"><span class="dot" style="background:var(--mint);"></span><span class="n">0</span><span class="lbl">Done</span></div>
+        <div class="summary-pill"><span class="dot" style="background:var(--amber);"></span><span class="n">0</span><span class="lbl">In&nbsp;prog</span></div>
+        <div class="summary-pill"><span class="dot" style="background:var(--coral);"></span><span class="n">0</span><span class="lbl">Not&nbsp;started</span></div>
+      </div>
+    </div>
+    <div class="status-wrap">
+      <table class="status">
+        <colgroup><col class="ws"><col class="st"><col class="pr"><col class="bl"><col class="de"><col class="ns"><col class="dt"></colgroup>
+        <thead><tr><th>Workstream</th><th class="c">Status</th><th class="c">Priority</th><th>Blockers</th><th>Details</th><th>Next steps</th><th>Target / milestone</th></tr></thead>
+        <tbody>
+          <tr>
+            <td><div class="ws-name">[ Workstream ]</div><div class="ws-sub">Short descriptor</div></td>
+            <td class="cell-c"><span class="rag done"><span class="d"></span>Done</span></td>
+            <td class="cell-c"><span class="prio p1">1</span></td>
+            <td><span class="blk-none">None</span></td>
+            <td class="detail ph">What's been accomplished so far.</td>
+            <td class="next ph">No open actions, or the next thing to watch.</td>
+            <td><div class="date-main">DD Mon</div><span class="date-tag complete">Complete</span></td>
+          </tr>
+          <tr>
+            <td><div class="ws-name">[ Workstream ]</div><div class="ws-sub">Short descriptor</div></td>
+            <td class="cell-c"><span class="rag progress"><span class="d"></span>In progress</span></td>
+            <td class="cell-c"><span class="prio p2">2</span></td>
+            <td><span class="blk">What is blocking this, and on whom.</span></td>
+            <td class="detail ph">Current state in one or two lines.</td>
+            <td class="next ph">The immediate next action.</td>
+            <td><div class="date-main">DD Mon</div><span class="date-tag ontrack">On track</span></td>
+          </tr>
+          <tr>
+            <td><div class="ws-name ph">[ Workstream ]</div><div class="ws-sub">Short descriptor</div></td>
+            <td class="cell-c"><span class="rag ph-pill"><span class="d"></span>Status</span></td>
+            <td class="cell-c"><span class="prio ph-pill">P</span></td>
+            <td><span class="ph">Blockers …</span></td>
+            <td class="detail ph">Details …</td>
+            <td class="next ph">Next steps …</td>
+            <td><div class="date-main ph">DD Mon</div></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="footer-row">
+      <div class="legend">
+        <div class="legend-group"><span class="legend-label">Status</span>
+          <span class="legend-item"><span class="d" style="background:var(--coral);"></span>Not started</span>
+          <span class="legend-item"><span class="d" style="background:var(--amber);"></span>In progress</span>
+          <span class="legend-item"><span class="d" style="background:var(--mint);"></span>Done</span>
+        </div>
+        <div class="legend-divider"></div>
+        <div class="legend-group"><span class="legend-label">Priority</span>
+          <span class="legend-item"><span class="prio p1" style="width:17px;height:17px;border-radius:5px;font-size:9px;">1</span>Highest</span>
+          <span class="legend-item">→</span>
+          <span class="legend-item"><span class="prio p5" style="width:17px;height:17px;border-radius:5px;font-size:9px;">5</span>Lowest</span>
+        </div>
+      </div>
+      <div class="meta">[ Milestone / go-live: Month YYYY ]</div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ SLIDE 4: CHEAT-SHEET / OPTIONS REFERENCE ============ -->
+<section class="slide">
+  <div class="stage">
+    <div class="orb" style="width:460px;height:460px;background:var(--electric);top:-150px;right:-70px;"></div>
+    <span class="tmpl-badge">Reusable template · reference</span>
+    <div class="line-accent" style="background:var(--electric);"></div>
+    <h2>How to use this deck</h2>
+    <div class="status-head">
+      <p class="sub">Slide 1 is the leadership overview (one lane per project). Slides 2+ are one detailed table per project. Copy a detail slide, swap the values below, keep rows ≤ 6.</p>
+    </div>
+    <div class="status-wrap">
+      <table class="status">
+        <colgroup><col class="ws"><col class="st"><col class="pr"><col class="bl"><col class="de"><col class="ns"><col class="dt"></colgroup>
+        <thead><tr><th>Element</th><th class="c">Status</th><th class="c">Priority</th><th>Date tag</th><th>What to change</th><th>Class to use</th><th>Notes</th></tr></thead>
+        <tbody>
+          <tr>
+            <td><div class="ws-name">Status pill</div><div class="ws-sub">RAG</div></td>
+            <td class="cell-c"><span class="rag done"><span class="d"></span>Done</span></td>
+            <td class="cell-c"><span class="prio p1">1</span></td>
+            <td><div class="date-main">—</div><span class="date-tag complete">Complete</span></td>
+            <td class="detail">Swap the class <b>and</b> the label together.</td>
+            <td class="next"><b>.rag done</b> · <b>.rag progress</b> · <b>.rag notstarted</b></td>
+            <td>Green / amber / red.</td>
+          </tr>
+          <tr>
+            <td><div class="ws-name">Priority chip</div><div class="ws-sub">P1–P5</div></td>
+            <td class="cell-c"><span class="rag progress"><span class="d"></span>In progress</span></td>
+            <td class="cell-c"><span class="prio p3">3</span></td>
+            <td><div class="date-main">—</div><span class="date-tag ontrack">On track</span></td>
+            <td class="detail">Set the number and matching class.</td>
+            <td class="next"><b>.prio p1</b> … <b>.prio p5</b></td>
+            <td>p1 = highest.</td>
+          </tr>
+          <tr>
+            <td><div class="ws-name">Target tag</div><div class="ws-sub">Date state</div></td>
+            <td class="cell-c"><span class="rag notstarted"><span class="d"></span>Not started</span></td>
+            <td class="cell-c"><span class="prio p2">2</span></td>
+            <td><div class="date-main">—</div><span class="date-tag risk">At risk</span></td>
+            <td class="detail">Pick the tag that matches reality.</td>
+            <td class="next"><b>ontrack</b> · <b>risk</b> · <b>late</b> · <b>complete</b></td>
+            <td>Under each date.</td>
+          </tr>
+          <tr>
+            <td><div class="ws-name">Blockers</div><div class="ws-sub">None vs. real</div></td>
+            <td class="cell-c"><span class="rag ph-pill"><span class="d"></span>—</span></td>
+            <td class="cell-c"><span class="prio ph-pill">·</span></td>
+            <td><div class="date-main">—</div><span class="date-tag late">Blocked</span></td>
+            <td class="detail">Use the muted "None", or call out the blocker.</td>
+            <td class="next"><b>.blk-none</b> · <b>.blk</b></td>
+            <td>.blk adds a ⚠ marker.</td>
+          </tr>
+          <tr>
+            <td><div class="ws-name">Overview lane</div><div class="ws-sub">Slide 1 accent</div></td>
+            <td class="cell-c"><span class="rag ph-pill"><span class="d"></span>—</span></td>
+            <td class="cell-c"><span class="prio ph-pill">·</span></td>
+            <td><div class="date-main">—</div></td>
+            <td class="detail">Set the left-border colour per project.</td>
+            <td class="next"><b>.lane green</b> · <b>.lane amber</b> · <b>.lane red</b></td>
+            <td>One lane each.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="footer-row">
+      <div class="legend">
+        <div class="legend-group"><span class="legend-label">Status</span>
+          <span class="legend-item"><span class="d" style="background:var(--coral);"></span>Not started</span>
+          <span class="legend-item"><span class="d" style="background:var(--amber);"></span>In progress</span>
+          <span class="legend-item"><span class="d" style="background:var(--mint);"></span>Done</span>
+        </div>
+        <div class="legend-divider"></div>
+        <div class="legend-group"><span class="legend-label">Priority</span>
+          <span class="legend-item"><span class="prio p1" style="width:17px;height:17px;border-radius:5px;font-size:9px;">1</span>Highest</span>
+          <span class="legend-item">→</span>
+          <span class="legend-item"><span class="prio p5" style="width:17px;height:17px;border-radius:5px;font-size:9px;">5</span>Lowest</span>
+        </div>
+      </div>
+      <div class="meta">Duplicate a detail slide per project · keep rows ≤ 6 to stay on one screen</div>
+    </div>
+  </div>
+</section>
+
+</div>
+
+<script>
+const deck = document.getElementById('deck');
+const indicator = document.getElementById('indicator');
+const counter = document.getElementById('counter');
+const slides = document.querySelectorAll('.slide');
+const total = slides.length;
+
+slides.forEach((_, i) => {
+  const dot = document.createElement('div');
+  dot.className = 'indicator-dot' + (i === 0 ? ' active' : '');
+  dot.onclick = () => slides[i].scrollIntoView({ behavior: 'smooth', inline: 'start' });
+  indicator.appendChild(dot);
+});
+
+let currentSlide = 0;
+deck.addEventListener('scroll', () => {
+  const idx = Math.round(deck.scrollLeft / window.innerWidth);
+  if (idx !== currentSlide && idx >= 0 && idx < total) {
+    currentSlide = idx;
+    document.querySelectorAll('.indicator-dot').forEach((d, i) => d.classList.toggle('active', i === idx));
+    counter.textContent = (idx + 1) + ' / ' + total;
+  }
+});
+function goSlide(dir) {
+  const next = Math.max(0, Math.min(total - 1, currentSlide + dir));
+  slides[next].scrollIntoView({ behavior: 'smooth', inline: 'start' });
+}
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'ArrowRight' || e.key === ' ') { e.preventDefault(); goSlide(1); }
+  if (e.key === 'ArrowLeft') { e.preventDefault(); goSlide(-1); }
+});
+
+/* Scale every fixed 1280x720 stage to fit the viewport — guarantees one-screen fit */
+function fitStages() {
+  const s = Math.min(window.innerWidth / 1280, window.innerHeight / 720) * 0.96;
+  document.querySelectorAll('.stage').forEach(st => st.style.transform = 'scale(' + s + ')');
+}
+window.addEventListener('resize', fitStages);
+fitStages();
+</script>
+
+</body>
+</html>
