@@ -21,12 +21,14 @@ interface SceneData {
 // selection). Only sanitize + serialize the scene once, right before it's
 // actually persisted, instead of on every single onChange call.
 function sanitizeScene(elements: readonly unknown[], appState: Record<string, unknown>): SceneData {
-  // Embedded image data (files) is intentionally not persisted for now —
-  // drop it to keep saved scenes small; strip non-serializable runtime
-  // fields (e.g. the collaborators Map) via a JSON round-trip.
+  // `collaborators` is a runtime-only Map — JSON.stringify turns it into `{}`,
+  // and Excalidraw crashes on load if it gets fed a plain object back where it
+  // expects a Map (or nothing). Drop it; it's never meaningful to persist.
+  const { collaborators: _collaborators, ...rest } = appState;
+  void _collaborators;
   return {
     elements: elements as unknown[],
-    appState: JSON.parse(JSON.stringify(appState)),
+    appState: JSON.parse(JSON.stringify(rest)),
   };
 }
 
@@ -47,11 +49,15 @@ export function WhiteboardCanvas({ boardId, initialData }: { boardId: string; in
   }, [boardId]);
 
   const data = (initialData ?? {}) as SceneData;
+  // Defensively strip `collaborators` on load too — boards saved before this
+  // fix may already have a corrupted (non-Map) value stored in the DB.
+  const { collaborators: _loadedCollaborators, ...safeAppState } = data.appState ?? {};
+  void _loadedCollaborators;
 
   return (
     <div className="h-full w-full overflow-hidden rounded-lg border border-border">
       <Excalidraw
-        initialData={{ elements: (data.elements as never) ?? [], appState: data.appState ?? {} }}
+        initialData={{ elements: (data.elements as never) ?? [], appState: safeAppState }}
         onChange={(elements, appState) => {
           pendingRef.current = { elements, appState: appState as unknown as Record<string, unknown> };
           if (timerRef.current) clearTimeout(timerRef.current);
