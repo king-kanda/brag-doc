@@ -66,8 +66,8 @@ export function WhiteboardsPanel({
 
   if (openBoard) {
     return (
-      <div className="flex h-[560px] flex-col gap-3">
-        <div className="flex items-center justify-between">
+      <div className="fixed inset-0 z-50 flex flex-col bg-background">
+        <div className="flex items-center justify-between border-b border-border px-4 py-2.5">
           <button
             onClick={() => setOpenId(null)}
             className="inline-flex items-center gap-1 text-[12px] text-muted-foreground transition-colors hover:text-foreground"
