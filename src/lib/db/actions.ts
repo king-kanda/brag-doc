@@ -277,11 +277,12 @@ export async function createWhiteboardAction(board: Whiteboard): Promise<void> {
 
 export async function updateWhiteboardAction(
   id: string,
-  patch: Partial<Pick<Whiteboard, "name" | "data">>
+  patch: Partial<Pick<Whiteboard, "name" | "data" | "updatedAt">>
 ): Promise<void> {
+  const { updatedAt, ...safePatch } = patch;
   await db
     .update(whiteboards)
-    .set({ ...patch, updatedAt: new Date() })
+    .set({ ...safePatch, updatedAt: updatedAt ? new Date(updatedAt) : new Date() })
     .where(eq(whiteboards.id, id));
 }
 

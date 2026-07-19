@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useAreaStore } from "@/lib/store";
 import { Whiteboard } from "@/lib/types";
 import { Button } from "@/components/ui/button";
@@ -8,6 +8,13 @@ import { Input } from "@/components/ui/input";
 import { WhiteboardCanvas } from "./whiteboard-canvas";
 import { ChevronLeft, Pencil, PenTool, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
+
+function nextBoardName(existingNames: string[]): string {
+  const taken = new Set(existingNames);
+  let n = existingNames.length + 1;
+  while (taken.has(`Board ${n}`)) n++;
+  return `Board ${n}`;
+}
 
 export function WhiteboardsPanel({
   areaId,
@@ -25,14 +32,18 @@ export function WhiteboardsPanel({
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
 
-  const boards = whiteboards
-    .filter((b) => b.areaId === areaId && b.workstreamId === workstreamId)
-    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+  const boards = useMemo(
+    () =>
+      whiteboards
+        .filter((b) => b.areaId === areaId && b.workstreamId === workstreamId)
+        .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)),
+    [whiteboards, areaId, workstreamId]
+  );
 
   const openBoard = boards.find((b) => b.id === openId);
 
   function handleCreate() {
-    const name = `Board ${boards.length + 1}`;
+    const name = nextBoardName(boards.map((b) => b.name));
     const newId = addWhiteboard(areaId, workstreamId, name);
     setOpenId(newId);
   }
@@ -67,7 +78,9 @@ export function WhiteboardsPanel({
           <span className="text-[13px] font-medium text-foreground">{openBoard.name}</span>
           <span className="w-[90px]" />
         </div>
-        <WhiteboardCanvas key={openBoard.id} boardId={openBoard.id} initialData={openBoard.data} />
+        <div className="min-h-0 flex-1">
+          <WhiteboardCanvas key={openBoard.id} boardId={openBoard.id} initialData={openBoard.data} />
+        </div>
       </div>
     );
   }

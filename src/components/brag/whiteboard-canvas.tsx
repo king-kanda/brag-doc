@@ -17,15 +17,30 @@ interface SceneData {
   appState?: Record<string, unknown>;
 }
 
+// Excalidraw's onChange fires on every scene mutation (drag, keystroke, even
+// selection). Only sanitize + serialize the scene once, right before it's
+// actually persisted, instead of on every single onChange call.
+function sanitizeScene(elements: readonly unknown[], appState: Record<string, unknown>): SceneData {
+  // Embedded image data (files) is intentionally not persisted for now —
+  // drop it to keep saved scenes small; strip non-serializable runtime
+  // fields (e.g. the collaborators Map) via a JSON round-trip.
+  return {
+    elements: elements as unknown[],
+    appState: JSON.parse(JSON.stringify(appState)),
+  };
+}
+
 export function WhiteboardCanvas({ boardId, initialData }: { boardId: string; initialData: unknown }) {
   const updateWhiteboardData = useAreaStore((s) => s.updateWhiteboardData);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const pendingRef = useRef<SceneData | null>(null);
+  const pendingRef = useRef<{ elements: readonly unknown[]; appState: Record<string, unknown> } | null>(null);
 
   useEffect(() => {
     return () => {
       if (timerRef.current) clearTimeout(timerRef.current);
-      if (pendingRef.current) updateWhiteboardData(boardId, pendingRef.current);
+      if (pendingRef.current) {
+        updateWhiteboardData(boardId, sanitizeScene(pendingRef.current.elements, pendingRef.current.appState));
+      }
     };
     // Flush-on-unmount only needs the id this instance was mounted with.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -38,17 +53,11 @@ export function WhiteboardCanvas({ boardId, initialData }: { boardId: string; in
       <Excalidraw
         initialData={{ elements: (data.elements as never) ?? [], appState: data.appState ?? {} }}
         onChange={(elements, appState) => {
-          // Embedded image data (files) is intentionally not persisted for now —
-          // drop it to keep saved scenes small; strip non-serializable runtime
-          // fields (e.g. the collaborators Map) via a JSON round-trip.
-          const scene: SceneData = {
-            elements: elements as unknown[],
-            appState: JSON.parse(JSON.stringify(appState)),
-          };
-          pendingRef.current = scene;
+          pendingRef.current = { elements, appState: appState as unknown as Record<string, unknown> };
           if (timerRef.current) clearTimeout(timerRef.current);
           timerRef.current = setTimeout(() => {
-            updateWhiteboardData(boardId, scene);
+            if (!pendingRef.current) return;
+            updateWhiteboardData(boardId, sanitizeScene(pendingRef.current.elements, pendingRef.current.appState));
             pendingRef.current = null;
           }, 800);
         }}

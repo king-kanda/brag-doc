@@ -32,6 +32,11 @@ function reportError(action: string, err: unknown) {
 }
 
 const ensuringWeeks = new Set<string>();
+/** Tracks in-flight whiteboard creates so a fast follow-up mutation (e.g. the
+ * first autosave right after a board is created) waits for the INSERT to
+ * land before firing an UPDATE — otherwise the UPDATE can race ahead and
+ * silently match zero rows. */
+const pendingWhiteboardCreates = new Map<string, Promise<unknown>>();
 
 interface AreaState {
   areas: Area[];
@@ -118,7 +123,10 @@ export const useAreaStore = create<AreaState>()((set, get) => ({
   },
 
   deleteArea: (areaId) => {
-    set((s) => ({ areas: s.areas.filter((a) => a.id !== areaId) }));
+    set((s) => ({
+      areas: s.areas.filter((a) => a.id !== areaId),
+      whiteboards: s.whiteboards.filter((b) => b.areaId !== areaId),
+    }));
     const { activeAreaId, areas } = get();
     if (activeAreaId === areaId) {
       const nextActive = areas.find((a) => !a.archived);
@@ -228,6 +236,7 @@ export const useAreaStore = create<AreaState>()((set, get) => ({
           ? mapProject(a, projectId, (p) => ({ ...p, workstreams: p.workstreams.filter((w) => w.id !== wsId) }))
           : a
       ),
+      whiteboards: s.whiteboards.filter((b) => b.workstreamId !== wsId),
     }));
     deleteWorkstreamAction(wsId).catch((err) => reportError("removing the workstream", err));
   },
@@ -244,7 +253,9 @@ export const useAreaStore = create<AreaState>()((set, get) => ({
       updatedAt: timestamp,
     };
     set((s) => ({ whiteboards: [...s.whiteboards, board] }));
-    createWhiteboardAction(board).catch((err) => reportError("adding the whiteboard", err));
+    const createPromise = createWhiteboardAction(board).catch((err) => reportError("adding the whiteboard", err));
+    pendingWhiteboardCreates.set(board.id, createPromise);
+    createPromise.finally(() => pendingWhiteboardCreates.delete(board.id));
     return board.id;
   },
 
@@ -253,7 +264,12 @@ export const useAreaStore = create<AreaState>()((set, get) => ({
     set((s) => ({
       whiteboards: s.whiteboards.map((b) => (b.id === boardId ? { ...b, data, updatedAt: timestamp } : b)),
     }));
-    updateWhiteboardAction(boardId, { data }).catch((err) => reportError("saving the whiteboard", err));
+    const persist = () =>
+      updateWhiteboardAction(boardId, { data, updatedAt: timestamp }).catch((err) =>
+        reportError("saving the whiteboard", err)
+      );
+    const pending = pendingWhiteboardCreates.get(boardId);
+    if (pending) { pending.then(persist); } else { persist(); }
   },
 
   renameWhiteboard: (boardId, name) => {
@@ -261,12 +277,19 @@ export const useAreaStore = create<AreaState>()((set, get) => ({
     set((s) => ({
       whiteboards: s.whiteboards.map((b) => (b.id === boardId ? { ...b, name, updatedAt: timestamp } : b)),
     }));
-    updateWhiteboardAction(boardId, { name }).catch((err) => reportError("renaming the whiteboard", err));
+    const persist = () =>
+      updateWhiteboardAction(boardId, { name, updatedAt: timestamp }).catch((err) =>
+        reportError("renaming the whiteboard", err)
+      );
+    const pending = pendingWhiteboardCreates.get(boardId);
+    if (pending) { pending.then(persist); } else { persist(); }
   },
 
   deleteWhiteboard: (boardId) => {
     set((s) => ({ whiteboards: s.whiteboards.filter((b) => b.id !== boardId) }));
-    deleteWhiteboardAction(boardId).catch((err) => reportError("deleting the whiteboard", err));
+    const persist = () => deleteWhiteboardAction(boardId).catch((err) => reportError("deleting the whiteboard", err));
+    const pending = pendingWhiteboardCreates.get(boardId);
+    if (pending) { pending.then(persist); } else { persist(); }
   },
 }));
 
