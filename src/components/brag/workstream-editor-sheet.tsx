@@ -21,6 +21,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { StarRating } from "./star-rating";
+import { WhiteboardsPanel } from "./whiteboards-panel";
 import { useAreaStore } from "@/lib/store";
 import {
   DateTagState,
@@ -236,6 +237,13 @@ export function WorkstreamEditorSheet({
               />
             </div>
           </div>
+
+          {workstream && (
+            <div className="space-y-1.5">
+              <Label>Whiteboards</Label>
+              <WhiteboardsPanel areaId={areaId} workstreamId={workstream.id} />
+            </div>
+          )}
         </div>
 
         <SheetFooter className="flex-row justify-between sm:justify-between">

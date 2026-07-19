@@ -1,4 +1,4 @@
-import { pgTable, text, boolean, integer, timestamp, date } from "drizzle-orm/pg-core";
+import { pgTable, text, boolean, integer, timestamp, date, jsonb } from "drizzle-orm/pg-core";
 
 export const areas = pgTable("areas", {
   id: text("id").primaryKey(),
@@ -59,4 +59,18 @@ export const workstreamEvents = pgTable("workstream_events", {
   fromStatus: text("from_status"),
   toStatus: text("to_status").notNull(),
   timestamp: timestamp("timestamp", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const whiteboards = pgTable("whiteboards", {
+  id: text("id").primaryKey(),
+  areaId: text("area_id")
+    .notNull()
+    .references(() => areas.id, { onDelete: "cascade" }),
+  /** null = an area-level whiteboard, not attached to any one workstream */
+  workstreamId: text("workstream_id").references(() => workstreams.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  /** Excalidraw scene: { elements, appState } */
+  data: jsonb("data").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });

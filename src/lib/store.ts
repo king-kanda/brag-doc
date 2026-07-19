@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-import { Area, Project, Workstream, WorkstreamEvent } from "./types";
+import { Area, Project, Whiteboard, Workstream, WorkstreamEvent } from "./types";
 import { formatWeekLabel } from "./weeks";
 import {
   fetchAllData,
@@ -12,6 +12,9 @@ import {
   addWorkstreamAction,
   updateWorkstreamAction,
   deleteWorkstreamAction,
+  createWhiteboardAction,
+  updateWhiteboardAction,
+  deleteWhiteboardAction,
 } from "./db/actions";
 import { toast } from "sonner";
 
@@ -29,10 +32,16 @@ function reportError(action: string, err: unknown) {
 }
 
 const ensuringWeeks = new Set<string>();
+/** Tracks in-flight whiteboard creates so a fast follow-up mutation (e.g. the
+ * first autosave right after a board is created) waits for the INSERT to
+ * land before firing an UPDATE — otherwise the UPDATE can race ahead and
+ * silently match zero rows. */
+const pendingWhiteboardCreates = new Map<string, Promise<unknown>>();
 
 interface AreaState {
   areas: Area[];
   events: WorkstreamEvent[];
+  whiteboards: Whiteboard[];
   loaded: boolean;
   activeAreaId: string | null;
   hydrate: () => Promise<void>;
@@ -51,18 +60,23 @@ interface AreaState {
   addWorkstream: (areaId: string, projectId: string, ws: Omit<Workstream, "id" | "updatedAt">) => void;
   updateWorkstream: (areaId: string, projectId: string, wsId: string, patch: Partial<Workstream>) => void;
   deleteWorkstream: (areaId: string, projectId: string, wsId: string) => void;
+  addWhiteboard: (areaId: string, workstreamId: string | null, name: string) => string;
+  updateWhiteboardData: (id: string, data: unknown) => void;
+  renameWhiteboard: (id: string, name: string) => void;
+  deleteWhiteboard: (id: string) => void;
 }
 
 export const useAreaStore = create<AreaState>()((set, get) => ({
   areas: [],
   events: [],
+  whiteboards: [],
   loaded: false,
   activeAreaId: null,
 
   hydrate: async () => {
     try {
-      const { areas, events } = await fetchAllData();
-      set({ areas, events, loaded: true });
+      const { areas, events, whiteboards } = await fetchAllData();
+      set({ areas, events, whiteboards, loaded: true });
     } catch (err) {
       console.error("[store] hydrate failed", err);
       toast.error("Couldn't load your data — check your connection and reload.");
@@ -109,7 +123,10 @@ export const useAreaStore = create<AreaState>()((set, get) => ({
   },
 
   deleteArea: (areaId) => {
-    set((s) => ({ areas: s.areas.filter((a) => a.id !== areaId) }));
+    set((s) => ({
+      areas: s.areas.filter((a) => a.id !== areaId),
+      whiteboards: s.whiteboards.filter((b) => b.areaId !== areaId),
+    }));
     const { activeAreaId, areas } = get();
     if (activeAreaId === areaId) {
       const nextActive = areas.find((a) => !a.archived);
@@ -219,8 +236,60 @@ export const useAreaStore = create<AreaState>()((set, get) => ({
           ? mapProject(a, projectId, (p) => ({ ...p, workstreams: p.workstreams.filter((w) => w.id !== wsId) }))
           : a
       ),
+      whiteboards: s.whiteboards.filter((b) => b.workstreamId !== wsId),
     }));
     deleteWorkstreamAction(wsId).catch((err) => reportError("removing the workstream", err));
+  },
+
+  addWhiteboard: (areaId, workstreamId, name) => {
+    const timestamp = new Date().toISOString();
+    const board: Whiteboard = {
+      id: id(),
+      areaId,
+      workstreamId,
+      name,
+      data: { elements: [], appState: {} },
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    };
+    set((s) => ({ whiteboards: [...s.whiteboards, board] }));
+    const createPromise = createWhiteboardAction(board).catch((err) => reportError("adding the whiteboard", err));
+    pendingWhiteboardCreates.set(board.id, createPromise);
+    createPromise.finally(() => pendingWhiteboardCreates.delete(board.id));
+    return board.id;
+  },
+
+  updateWhiteboardData: (boardId, data) => {
+    const timestamp = new Date().toISOString();
+    set((s) => ({
+      whiteboards: s.whiteboards.map((b) => (b.id === boardId ? { ...b, data, updatedAt: timestamp } : b)),
+    }));
+    const persist = () =>
+      updateWhiteboardAction(boardId, { data, updatedAt: timestamp }).catch((err) =>
+        reportError("saving the whiteboard", err)
+      );
+    const pending = pendingWhiteboardCreates.get(boardId);
+    if (pending) { pending.then(persist); } else { persist(); }
+  },
+
+  renameWhiteboard: (boardId, name) => {
+    const timestamp = new Date().toISOString();
+    set((s) => ({
+      whiteboards: s.whiteboards.map((b) => (b.id === boardId ? { ...b, name, updatedAt: timestamp } : b)),
+    }));
+    const persist = () =>
+      updateWhiteboardAction(boardId, { name, updatedAt: timestamp }).catch((err) =>
+        reportError("renaming the whiteboard", err)
+      );
+    const pending = pendingWhiteboardCreates.get(boardId);
+    if (pending) { pending.then(persist); } else { persist(); }
+  },
+
+  deleteWhiteboard: (boardId) => {
+    set((s) => ({ whiteboards: s.whiteboards.filter((b) => b.id !== boardId) }));
+    const persist = () => deleteWhiteboardAction(boardId).catch((err) => reportError("deleting the whiteboard", err));
+    const pending = pendingWhiteboardCreates.get(boardId);
+    if (pending) { pending.then(persist); } else { persist(); }
   },
 }));
 
