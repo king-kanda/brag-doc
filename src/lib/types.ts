@@ -76,6 +76,19 @@ export interface WorkstreamEvent {
   timestamp: string;
 }
 
+/** An Excalidraw scene, saved against an area or a specific workstream within it. */
+export interface Whiteboard {
+  id: string;
+  areaId: string;
+  /** null = an area-level board, not attached to any one workstream */
+  workstreamId: string | null;
+  name: string;
+  /** Excalidraw scene: { elements, appState } */
+  data: unknown;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export const RAG_LABEL: Record<RagStatus, string> = {
   done: "Done",
   progress: "In progress",

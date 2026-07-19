@@ -2,8 +2,8 @@
 
 import { and, desc, eq } from "drizzle-orm";
 import { db } from "./client";
-import { areas, projects, workstreamEvents, workstreams } from "./schema";
-import { Area, Priority, Project, RagStatus, Workstream, WorkstreamEvent } from "../types";
+import { areas, projects, whiteboards, workstreamEvents, workstreams } from "./schema";
+import { Area, Priority, Project, RagStatus, Whiteboard, Workstream, WorkstreamEvent } from "../types";
 import { startOfWeekFor, toISODate } from "../weeks";
 
 function toWorkstream(row: typeof workstreams.$inferSelect): Workstream {
@@ -68,12 +68,25 @@ function toEvent(row: typeof workstreamEvents.$inferSelect): WorkstreamEvent {
   };
 }
 
-export async function fetchAllData(): Promise<{ areas: Area[]; events: WorkstreamEvent[] }> {
-  const [areaRows, projectRows, workstreamRows, eventRows] = await Promise.all([
+function toWhiteboard(row: typeof whiteboards.$inferSelect): Whiteboard {
+  return {
+    id: row.id,
+    areaId: row.areaId,
+    workstreamId: row.workstreamId,
+    name: row.name,
+    data: row.data,
+    createdAt: row.createdAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString(),
+  };
+}
+
+export async function fetchAllData(): Promise<{ areas: Area[]; events: WorkstreamEvent[]; whiteboards: Whiteboard[] }> {
+  const [areaRows, projectRows, workstreamRows, eventRows, whiteboardRows] = await Promise.all([
     db.select().from(areas),
     db.select().from(projects),
     db.select().from(workstreams),
     db.select().from(workstreamEvents),
+    db.select().from(whiteboards),
   ]);
 
   const workstreamsByProject = new Map<string, Workstream[]>();
@@ -92,8 +105,9 @@ export async function fetchAllData(): Promise<{ areas: Area[]; events: Workstrea
 
   const resultAreas = areaRows.map((row) => toArea(row, projectsByArea.get(row.id) ?? []));
   const resultEvents = eventRows.map(toEvent);
+  const resultWhiteboards = whiteboardRows.map(toWhiteboard);
 
-  return { areas: resultAreas, events: resultEvents };
+  return { areas: resultAreas, events: resultEvents, whiteboards: resultWhiteboards };
 }
 
 /** Persists an area the client has already constructed (with its final id). */
@@ -246,4 +260,31 @@ export async function updateWorkstreamAction(
 
 export async function deleteWorkstreamAction(workstreamId: string): Promise<void> {
   await db.delete(workstreams).where(eq(workstreams.id, workstreamId));
+}
+
+/** Persists a whiteboard the client has already constructed. */
+export async function createWhiteboardAction(board: Whiteboard): Promise<void> {
+  await db.insert(whiteboards).values({
+    id: board.id,
+    areaId: board.areaId,
+    workstreamId: board.workstreamId,
+    name: board.name,
+    data: board.data,
+    createdAt: new Date(board.createdAt),
+    updatedAt: new Date(board.updatedAt),
+  });
+}
+
+export async function updateWhiteboardAction(
+  id: string,
+  patch: Partial<Pick<Whiteboard, "name" | "data">>
+): Promise<void> {
+  await db
+    .update(whiteboards)
+    .set({ ...patch, updatedAt: new Date() })
+    .where(eq(whiteboards.id, id));
+}
+
+export async function deleteWhiteboardAction(id: string): Promise<void> {
+  await db.delete(whiteboards).where(eq(whiteboards.id, id));
 }

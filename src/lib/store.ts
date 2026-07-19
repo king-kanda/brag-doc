@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-import { Area, Project, Workstream, WorkstreamEvent } from "./types";
+import { Area, Project, Whiteboard, Workstream, WorkstreamEvent } from "./types";
 import { formatWeekLabel } from "./weeks";
 import {
   fetchAllData,
@@ -12,6 +12,9 @@ import {
   addWorkstreamAction,
   updateWorkstreamAction,
   deleteWorkstreamAction,
+  createWhiteboardAction,
+  updateWhiteboardAction,
+  deleteWhiteboardAction,
 } from "./db/actions";
 import { toast } from "sonner";
 
@@ -33,6 +36,7 @@ const ensuringWeeks = new Set<string>();
 interface AreaState {
   areas: Area[];
   events: WorkstreamEvent[];
+  whiteboards: Whiteboard[];
   loaded: boolean;
   activeAreaId: string | null;
   hydrate: () => Promise<void>;
@@ -51,18 +55,23 @@ interface AreaState {
   addWorkstream: (areaId: string, projectId: string, ws: Omit<Workstream, "id" | "updatedAt">) => void;
   updateWorkstream: (areaId: string, projectId: string, wsId: string, patch: Partial<Workstream>) => void;
   deleteWorkstream: (areaId: string, projectId: string, wsId: string) => void;
+  addWhiteboard: (areaId: string, workstreamId: string | null, name: string) => string;
+  updateWhiteboardData: (id: string, data: unknown) => void;
+  renameWhiteboard: (id: string, name: string) => void;
+  deleteWhiteboard: (id: string) => void;
 }
 
 export const useAreaStore = create<AreaState>()((set, get) => ({
   areas: [],
   events: [],
+  whiteboards: [],
   loaded: false,
   activeAreaId: null,
 
   hydrate: async () => {
     try {
-      const { areas, events } = await fetchAllData();
-      set({ areas, events, loaded: true });
+      const { areas, events, whiteboards } = await fetchAllData();
+      set({ areas, events, whiteboards, loaded: true });
     } catch (err) {
       console.error("[store] hydrate failed", err);
       toast.error("Couldn't load your data — check your connection and reload.");
@@ -221,6 +230,43 @@ export const useAreaStore = create<AreaState>()((set, get) => ({
       ),
     }));
     deleteWorkstreamAction(wsId).catch((err) => reportError("removing the workstream", err));
+  },
+
+  addWhiteboard: (areaId, workstreamId, name) => {
+    const timestamp = new Date().toISOString();
+    const board: Whiteboard = {
+      id: id(),
+      areaId,
+      workstreamId,
+      name,
+      data: { elements: [], appState: {} },
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    };
+    set((s) => ({ whiteboards: [...s.whiteboards, board] }));
+    createWhiteboardAction(board).catch((err) => reportError("adding the whiteboard", err));
+    return board.id;
+  },
+
+  updateWhiteboardData: (boardId, data) => {
+    const timestamp = new Date().toISOString();
+    set((s) => ({
+      whiteboards: s.whiteboards.map((b) => (b.id === boardId ? { ...b, data, updatedAt: timestamp } : b)),
+    }));
+    updateWhiteboardAction(boardId, { data }).catch((err) => reportError("saving the whiteboard", err));
+  },
+
+  renameWhiteboard: (boardId, name) => {
+    const timestamp = new Date().toISOString();
+    set((s) => ({
+      whiteboards: s.whiteboards.map((b) => (b.id === boardId ? { ...b, name, updatedAt: timestamp } : b)),
+    }));
+    updateWhiteboardAction(boardId, { name }).catch((err) => reportError("renaming the whiteboard", err));
+  },
+
+  deleteWhiteboard: (boardId) => {
+    set((s) => ({ whiteboards: s.whiteboards.filter((b) => b.id !== boardId) }));
+    deleteWhiteboardAction(boardId).catch((err) => reportError("deleting the whiteboard", err));
   },
 }));
 
